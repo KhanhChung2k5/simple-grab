@@ -44,6 +44,11 @@ func Forbidden(c *gin.Context, err error) {
 	c.JSON(http.StatusForbidden, Body{Error: err.Error()})
 }
 
+// Status 409
+func Conflict(c *gin.Context, err error) {
+	c.JSON(http.StatusConflict, Body{Error: err.Error()})
+}
+
 //Status 429
 func TooManyRequests(c *gin.Context, err error) {
 	c.JSON(http.StatusTooManyRequests, Body{Error: err.Error()})

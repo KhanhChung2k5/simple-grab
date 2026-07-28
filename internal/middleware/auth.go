@@ -24,13 +24,10 @@ func AuthMiddleware(authService *service.AuthService) gin.HandlerFunc {
 			return
 		}
 		//Split the token
-		tokenParts := strings.Split(tokenStr, " ")
-		if len(tokenParts) != 2 { //Bearer <token> (sai format)
-			if tokenParts[0] != "Bearer" {
-				//Return an error if the token is invalid
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token format"})
-				return
-			}
+		tokenParts := strings.SplitN(tokenStr, " ", 2)
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" || tokenParts[1] == "" { //Bearer <token> (sai format)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token format"})
+			return
 		}
 		//Get the token
 		token := tokenParts[1] //<token>
@@ -50,7 +47,25 @@ func AuthMiddleware(authService *service.AuthService) gin.HandlerFunc {
 		}
 		//Set the user in the context
 		c.Set("user", user) //user is the user object
+		c.Set("user_id", user.ID) //user_id is the user id
+		c.Set("role", user.Role) //role is the user role
 		//Continue
+		c.Next()
+	}
+}
+
+func RequireRole(roles ...string) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(roles))
+	for _, role := range roles {
+		allowed[role] = struct{}{}
+	}
+
+	return func(c *gin.Context) {
+		userRole := c.GetString("role")
+		if _, ok := allowed[userRole]; !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
 		c.Next()
 	}
 }

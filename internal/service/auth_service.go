@@ -101,10 +101,10 @@ func (s *AuthService) Login(ctx context.Context, req model.LoginRequest) (*model
 	}
 
 	user.PasswordHash = ""
-	//Return the token
 	return &model.LoginResponse{
-		Token: token,
+		AccessToken: token,
 		ExpiresIn:   int(s.jwtExpiry.Seconds()),
+		User:        *user,
 	}, nil
 }
 
