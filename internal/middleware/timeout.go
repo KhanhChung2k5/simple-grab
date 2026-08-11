@@ -2,10 +2,9 @@ package middleware
 
 import (
 	"context"
-	"errors"
+	"net/http"
 	"time"
 
-	"github.com/KhanhChung2k5/simple-grab/internal/response"
 	"github.com/gin-gonic/gin"
 )
 
@@ -35,8 +34,8 @@ func Timeout(timeout time.Duration) gin.HandlerFunc {
 		//If the request is finished, do nothing
 		case <-finished:
 		case <-ctx.Done():
-			response.Error(c, errors.New("request timeout"))
-			c.Abort()
+			//return error 504 Gateway Timeout
+			c.AbortWithStatusJSON(http.StatusGatewayTimeout, gin.H{"error": "request timeout"})
 			return
 		}
 	}

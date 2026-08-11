@@ -31,11 +31,18 @@ func (h *RideHandler) Create(c *gin.Context) {
 
 	ride, err := h.rides.Create(c.Request.Context(), userID, req)
 	if err != nil {
-		response.InternalServerError(c, errors.New("failed to create ride"))
+		switch {
+		case errors.Is(err, service.ErrRiderHasActiveRide):
+			response.Conflict(c, err)
+
+		default:
+			response.InternalServerError(c, errors.New("failed to create ride"))
+			return
+		}
 		return
 	}
-
 	response.Success(c, ride)
+
 }
 
 // GetByID gets a ride by ID
@@ -100,6 +107,15 @@ func (h *RideHandler) Accept(c *gin.Context) {
 		}
 		if errors.Is(err, service.ErrRideNotFound) {
 			response.NotFound(c, err)
+			return
+		}
+
+		if errors.Is(err, service.ErrDriverOffline) {
+			response.Forbidden(c, err)
+			return
+		}
+		if errors.Is(err, service.ErrDriverHasActiveRide) {
+			response.Conflict(c, err)
 			return
 		}
 		response.InternalServerError(c, errors.New("failed to accept ride"))

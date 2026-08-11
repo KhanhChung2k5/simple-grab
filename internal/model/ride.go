@@ -29,12 +29,12 @@ func (Ride) TableName() string {
 }
 
 type CreateRideRequest struct {
-	PickupLat  float64 `json:"pickup_lat" binding:"required"`
-	PickupLng  float64 `json:"pickup_lng" binding:"required"`
-	DropoffLat float64 `json:"dropoff_lat" binding:"required"`
-	DropoffLng float64 `json:"dropoff_lng" binding:"required"`
+	PickupLat  *float64 `json:"pickup_lat" binding:"required,gte=-90,lte=90"`
+	PickupLng  *float64 `json:"pickup_lng" binding:"required,gte=-180,lte=180"`
+	DropoffLat *float64 `json:"dropoff_lat" binding:"required,gte=-90,lte=90"`
+	DropoffLng *float64 `json:"dropoff_lng" binding:"required,gte=-180,lte=180"`
 }
 
 type UpdateRideStatusRequest struct {
-	Status string `json:"status" binding:"required,oneof=in_progress completed cancelled"`
+	Status string `json:"status" binding:"required,oneof=in_progress completed"`
 }

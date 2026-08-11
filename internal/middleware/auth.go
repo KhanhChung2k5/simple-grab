@@ -20,9 +20,10 @@ func AuthMiddleware(authService *service.AuthService) gin.HandlerFunc {
 		tokenStr := c.GetHeader("Authorization")
 		if tokenStr == "" { //No token provided
 			//Return an error if the token is empty 
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": ErrInvalidToken.Error()})
 			return
 		}
+		
 		//Split the token
 		tokenParts := strings.SplitN(tokenStr, " ", 2)
 		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" || tokenParts[1] == "" { //Bearer <token> (sai format)

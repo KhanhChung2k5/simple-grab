@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/KhanhChung2k5/simple-grab/internal/model"
 	"github.com/KhanhChung2k5/simple-grab/internal/repository"
@@ -22,29 +23,25 @@ func NewAuthHandler(auth *service.AuthService) *AuthHandler {
 
 // Register handles the register request
 func (h *AuthHandler) Register(c *gin.Context) {
-	// bind the request body to the RegisterRequest struct
 	var req model.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		// if the request body is invalid, return a bad request response
 		response.BadRequest(c, err)
 		return
 	}
 
-	// call the Register service to register the user
+	// Normalize the email so registration and login use a consistent value.
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
 	result, err := h.auth.Register(c.Request.Context(), req)
 	if err != nil {
-		// if the email already exists, return a conflict response
-		if errors.Is(err, repository.ErrEmailExists) {
+		switch {
+		case errors.Is(err, repository.ErrEmailExists):
+			response.Conflict(c, err)
+		case errors.Is(err, service.ErrInvalidRole):
 			response.BadRequest(c, err)
-			return
+		default:
+			response.InternalServerError(c, errors.New("failed to register"))
 		}
-		// if the role is invalid, return a bad request response
-		if errors.Is(err, service.ErrInvalidRole) {
-			response.BadRequest(c, err)
-			return
-		}
-		// if the error is not nil, return an internal server error response
-		response.InternalServerError(c, errors.New("failed to register"))
 		return
 	}
 

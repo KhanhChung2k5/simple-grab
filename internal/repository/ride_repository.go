@@ -13,7 +13,7 @@ import (
 var (
 	//
 	// ErrRideNotFound is returned when a ride is not found
-	ErrRideNotFound     = errors.New("ride not found")
+	ErrRideNotFound = errors.New("ride not found")
 	// ErrRideAlreadyTaken is returned when a ride already has a driver
 	ErrRideAlreadyTaken = errors.New("ride already has a driver")
 )
@@ -96,10 +96,24 @@ func (r *RideRepository) ListAvailable(ctx context.Context) ([]model.Ride, error
 
 // Accept accepts a ride by a driver
 func (r *RideRepository) Accept(ctx context.Context, rideID, driverID string) (*model.Ride, error) {
+	ride, err := r.GetByID(ctx, rideID)
+	if err != nil {
+		return nil, err
+	}
+
+	if ride.Status != model.RidePending || ride.DriverID != nil {
+		return nil, ErrRideAlreadyTaken
+	}
+
 	result := r.db.WithContext(ctx).
 		Model(&model.Ride{}).
-		Where("id = ? AND status = ? AND driver_id IS NULL", rideID, model.RidePending).
-		Updates(map[string]interface{}{
+		Where(
+			"id = ? AND status = ? AND driver_id IS NULL",
+			rideID,
+			model.RidePending,
+		).
+		// update the ride status and driver id
+		Updates(map[string]any{
 			"driver_id":  driverID,
 			"status":     model.RideAccepted,
 			"updated_at": time.Now(),
@@ -108,6 +122,8 @@ func (r *RideRepository) Accept(ctx context.Context, rideID, driverID string) (*
 	if result.Error != nil {
 		return nil, fmt.Errorf("accept ride: %w", result.Error)
 	}
+
+	// if the ride is not found, return an error
 	if result.RowsAffected == 0 {
 		return nil, ErrRideAlreadyTaken
 	}
@@ -133,4 +149,39 @@ func (r *RideRepository) UpdateStatus(ctx context.Context, rideID, driverID, new
 	}
 
 	return r.GetByID(ctx, rideID)
+}
+
+// HasActiveRideByRider reports whether a rider has a pending or ongoing ride.
+func (r *RideRepository) HasActiveRideByRider(ctx context.Context, riderID string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&model.Ride{}).
+		Where("rider_id = ? AND status IN ?", riderID, []string{
+			model.RidePending,
+			model.RideAccepted,
+			model.RideInProgress,
+		}).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("check rider active ride: %w", err)
+	}
+
+	return count > 0, nil
+}
+
+// HasActiveRideByDriver reports whether a driver has an accepted or ongoing ride.
+func (r *RideRepository) HasActiveRideByDriver(ctx context.Context, driverID string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&model.Ride{}).
+		Where("driver_id = ? AND status IN ?", driverID, []string{
+			model.RideAccepted,
+			model.RideInProgress,
+		}).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("check driver active ride: %w", err)
+	}
+
+	return count > 0, nil
 }
