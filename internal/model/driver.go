@@ -13,16 +13,16 @@ type UpdateDriverOnlineError struct {
 }
 
 type UpdateDriverLocationRequest struct {
-	Latitude *float64 `json:"latitude" binding:"required"`
-	Longitude *float64 `json:"longitude" binding:"required"`
+	Latitude  *float64 `json:"latitude" binding:"required,gte=-90,lte=90"`
+	Longitude *float64 `json:"longitude" binding:"required,gte=-180,lte=180"`
 }
 
 type UpdateDriverLocationResponse struct {
-	Latitude *float64 `json:"latitude"`
+	Latitude  *float64 `json:"latitude"`
 	Longitude *float64 `json:"longitude"`
 }
 
 type UpdateDriverLocationError struct {
-	Latitude *float64 `json:"latitude"`
+	Latitude  *float64 `json:"latitude"`
 	Longitude *float64 `json:"longitude"`
 }

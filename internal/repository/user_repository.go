@@ -9,10 +9,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var (
-	ErrRiderNotFound     = errors.New("rider not found")
-	
-)
 // Error constants for user repository
 var (
 	ErrUserNotFound = errors.New("user not found")
@@ -27,26 +23,6 @@ type UserRepository struct {
 // NewUserRepository creates a new user repository
 func NewUserRepository(db *gorm.DB) *UserRepository {
 	return &UserRepository{db: db}
-}
-
-// Create creates a new user
-func (r *UserRepository) Create(ctx context.Context, email, passwordHash, role string, phone *string) (*model.User, error) {
-	user := &model.User{
-		Email:        email,
-		Phone:        phone,
-		PasswordHash: passwordHash,
-		Role:         role,
-	}
-
-	err := r.db.WithContext(ctx).Create(user).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			return nil, ErrEmailExists
-		}
-		return nil, fmt.Errorf("create user: %w", err)
-	}
-
-	return user, nil
 }
 
 // GetByEmail retrieves a user by their email
@@ -77,17 +53,53 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*model.User, e
 	return &user, nil
 }
 
-// CreateDriverProfile creates a new driver profile for a user
-func (r *UserRepository) CreateDriverProfile(ctx context.Context, userID string) (*model.Driver, error) {
-	driver := &model.Driver{
-		UserID:      userID,
-		VehicleType: "car",
-	}
+// CreateWithRoleProfile creates a new user with a role profile
+func (r *UserRepository) CreateWithRoleProfile(
+	ctx context.Context,
+	email string,
+	passwordHash string,
+	role string,
+	phone *string,
+) (*model.User, error) {
+	var createdUser *model.User
 
-	err := r.db.WithContext(ctx).Create(driver).Error
+	// create the user
+	err := r.db.WithContext(ctx).Transaction(
+		func(tx *gorm.DB) error {
+			user := &model.User{
+				Email:        email,
+				PasswordHash: passwordHash,
+				Role:         role,
+				Phone:        phone,
+			}
+
+			// create the user
+			if err := tx.Create(user).Error; err != nil {
+				if errors.Is(err, gorm.ErrDuplicatedKey) {
+					return ErrEmailExists
+				}
+				return fmt.Errorf("create user: %w", err)
+			}
+			// check if the role is driver
+			if role == model.RoleDriver {
+				// create the driver profile
+				driver := &model.Driver{
+					UserID:      user.ID,
+					VehicleType: "car",
+				}
+				// create the driver profile
+				if err := tx.Create(driver).Error; err != nil {
+					return fmt.Errorf("create driver profile: %w", err)
+				}
+			}
+			// set the created user
+			createdUser = user
+			return nil
+		},
+	)
 	if err != nil {
-		return nil, fmt.Errorf("create driver profile: %w", err)
+		return nil, err
 	}
 
-	return driver, nil
+	return createdUser, nil
 }

@@ -18,6 +18,7 @@ var (
 	ErrDriverOffline       = errors.New("driver must be online to accept rides")
 	ErrRiderHasActiveRide  = errors.New("rider already has an active ride")
 	ErrDriverHasActiveRide = errors.New("driver already has an active ride")
+	ErrRideCannotCancel    = errors.New("ride cannot be cancelled")
 )
 
 // allowed transitions for a ride status
@@ -67,8 +68,11 @@ func (s *RideService) Create(
 		DropoffLng: *req.DropoffLng,
 		Fare:       &fare,
 	}
-	// create the ride
-	return s.rides.Create(ctx, ride)
+	createdRide, err := s.rides.Create(ctx, ride)
+	if err != nil {
+		return nil, mapRideError(err)
+	}
+	return createdRide, nil
 }
 
 // GetByID gets a ride by its ID
@@ -118,7 +122,7 @@ func (s *RideService) UpdateStatus(ctx context.Context, rideID, driverID, newSta
 	}
 
 	// update the status of the ride
-	updated, err := s.rides.UpdateStatus(ctx, rideID, driverID, newStatus)
+	updated, err := s.rides.UpdateStatus(ctx, rideID, driverID, ride.Status, newStatus)
 	if err != nil {
 		return nil, mapRideError(err)
 	}
@@ -128,15 +132,20 @@ func (s *RideService) UpdateStatus(ctx context.Context, rideID, driverID, newSta
 
 // canViewRide checks if a user can view a ride
 func canViewRide(ride *model.Ride, userID, role string) bool {
+	// check if the user can view the ride
 	switch role {
+	// check if the user is the rider of the ride
 	case model.RoleRider:
 		return ride.RiderID == userID
 	case model.RoleDriver:
+		// check if the driver is the driver of the ride
 		if ride.Status == model.RidePending && ride.DriverID == nil {
 			return true
 		}
+		// check if the driver is the driver of the ride
 		return ride.DriverID != nil && *ride.DriverID == userID
 	default:
+		// check if the user is not a rider or driver
 		return false
 	}
 }
@@ -158,10 +167,21 @@ func mapRideError(err error) error {
 	}
 
 	switch {
+	// check if the ride is not found
 	case errors.Is(err, repository.ErrRideNotFound):
 		return ErrRideNotFound
+	// check if the ride is already taken
 	case errors.Is(err, repository.ErrRideAlreadyTaken):
 		return ErrRideAlreadyTaken
+	// check if the rider has an active ride
+	case errors.Is(err, repository.ErrRiderHasActiveRide):
+		return ErrRiderHasActiveRide
+	// check if the driver has an active ride
+	case errors.Is(err, repository.ErrDriverHasActiveRide):
+		return ErrDriverHasActiveRide
+	// check if the ride status is changed
+	case errors.Is(err, repository.ErrRideStatusChanged):
+		return ErrRideStatusInvalid
 	default:
 		return fmt.Errorf("ride repository: %w", err)
 	}
@@ -169,11 +189,16 @@ func mapRideError(err error) error {
 
 // Accept accepts a ride by a driver
 func (s *RideService) Accept(ctx context.Context, rideID, driverID string) (*model.Ride, error) {
-	driverProfile, err := s.drivers.GetByUserId(driverID)
+	driverProfile, err := s.drivers.GetByUserID(ctx, driverID)
 	if err != nil {
-		return nil, ErrDriverNotFound
+		if errors.Is(err, repository.ErrDriverNotFound) {
+			return nil, ErrDriverNotFound
+		}
+		// return the error
+		return nil, fmt.Errorf("get driver profile: %w", err)
 	}
 
+	// check if the driver not online
 	if !driverProfile.IsOnline {
 		return nil, ErrDriverOffline
 	}
@@ -195,4 +220,54 @@ func (s *RideService) Accept(ctx context.Context, rideID, driverID string) (*mod
 	}
 
 	return ride, nil
+}
+
+// CancelByRider cancels a pending or accepted ride owned by the rider.
+func (s *RideService) CancelByRider(ctx context.Context, rideID, riderID string) (*model.Ride, error) {
+	ride, err := s.rides.GetByID(ctx, rideID)
+	if err != nil {
+		return nil, mapRideError(err)
+	}
+
+	if ride.RiderID != riderID {
+		return nil, ErrForbidden
+	}
+	if ride.Status != model.RidePending && ride.Status != model.RideAccepted {
+		return nil, ErrRideCannotCancel
+	}
+
+	cancelledRide, err := s.rides.CancelByRider(ctx, rideID, riderID, ride.Status)
+	if err != nil {
+		if errors.Is(err, repository.ErrRideStatusChanged) {
+			return nil, ErrRideCannotCancel
+		}
+		return nil, fmt.Errorf("cancel ride by rider: %w", err)
+	}
+
+	return cancelledRide, nil
+}
+
+// CancelByDriver cancels an accepted ride assigned to the driver.
+func (s *RideService) CancelByDriver(ctx context.Context, rideID, driverID string) (*model.Ride, error) {
+	ride, err := s.rides.GetByID(ctx, rideID)
+	if err != nil {
+		return nil, mapRideError(err)
+	}
+
+	if ride.DriverID == nil || *ride.DriverID != driverID {
+		return nil, ErrForbidden
+	}
+	if ride.Status != model.RideAccepted {
+		return nil, ErrRideCannotCancel
+	}
+
+	cancelledRide, err := s.rides.CancelByDriver(ctx, rideID, driverID, ride.Status)
+	if err != nil {
+		if errors.Is(err, repository.ErrRideStatusChanged) {
+			return nil, ErrRideCannotCancel
+		}
+		return nil, fmt.Errorf("cancel ride by driver: %w", err)
+	}
+
+	return cancelledRide, nil
 }

@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"log"
 	"errors"
+	"log"
 
 	"github.com/KhanhChung2k5/simple-grab/internal/response"
 	"github.com/gin-gonic/gin"

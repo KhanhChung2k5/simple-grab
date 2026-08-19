@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"errors"
+	"fmt"
 
 	"github.com/KhanhChung2k5/simple-grab/internal/model"
 	"github.com/KhanhChung2k5/simple-grab/internal/repository"
@@ -20,16 +22,30 @@ func NewDriverService(drivers *repository.DriverRepository) *DriverService {
 }
 
 // GetByUserID gets a driver by user id
-func (s *DriverService) GetByUserID(userID string) (*model.Driver, error) {
-	return s.drivers.GetByUserId(userID)
+func (s *DriverService) GetByUserID(ctx context.Context, userID string) (*model.Driver, error) {
+	driver, err := s.drivers.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, mapDriverError(err)
+	}
+	return driver, nil
 }
 
 // SetOnline updates the driver's online/offline status
-func (s *DriverService) SetOnline(userID string, isOnline bool) error {
-	return s.drivers.UpdateOnline(userID, isOnline)
+func (s *DriverService) SetOnline(ctx context.Context, userID string, isOnline bool) error {
+	return mapDriverError(s.drivers.UpdateOnline(ctx, userID, isOnline))
 }
 
 // UpdateLocation updates the driver's current location
-func (s *DriverService) UpdateLocation(userID string, latitude, longitude float64) error {
-	return s.drivers.UpdateLocation(userID, latitude, longitude)
+func (s *DriverService) UpdateLocation(ctx context.Context, userID string, latitude, longitude float64) error {
+	return mapDriverError(s.drivers.UpdateLocation(ctx, userID, latitude, longitude))
+}
+
+func mapDriverError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, repository.ErrDriverNotFound) {
+		return ErrDriverNotFound
+	}
+	return fmt.Errorf("driver repository: %w", err)
 }

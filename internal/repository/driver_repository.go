@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -10,8 +11,7 @@ import (
 )
 
 var (
-	ErrDriverNotFound     = errors.New("driver not found")
-	ErrDriverAlreadyTaken = errors.New("driver already has a ride")
+	ErrDriverNotFound = errors.New("driver not found")
 )
 
 // DriverRepository is a repository for the driver model
@@ -24,55 +24,58 @@ func NewDriverRepository(db *gorm.DB) *DriverRepository {
 	return &DriverRepository{db: db}
 }
 
-func (r *DriverRepository) GetByUserId(userId string) (*model.Driver, error) {
+func (r *DriverRepository) GetByUserID(ctx context.Context, userID string) (*model.Driver, error) {
 	var driver model.Driver
-	err := r.db.Where("user_id = ?", userId).First(&driver).Error
+
+	err := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		First(&driver).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("driver not found")
+			return nil, ErrDriverNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("get driver by user id: %w", err)
 	}
+
 	return &driver, nil
 }
 
-//Update status offline/online
+// Update status offline/online
 // UpdateOnline updates the driver's online/offline status.
-func (r *DriverRepository) UpdateOnline(userID string, isOnline bool) error {
-	result := r.db.
+func (r *DriverRepository) UpdateOnline(ctx context.Context, userID string, isOnline bool) error {
+	result := r.db.WithContext(ctx).
 		Model(&model.Driver{}).
 		Where("user_id = ?", userID).
 		Update("is_online", isOnline)
 
 	if result.Error != nil {
-		return fmt.Errorf(
-			"failed to update online status: %w",
-			result.Error,
-		)
+		// check if the error is not found
+		return fmt.Errorf("update driver online: %w", result.Error)
 	}
-
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("driver not found")
+		return ErrDriverNotFound
 	}
 
 	return nil
 }
 
-//Update location
-func (r *DriverRepository) UpdateLocation(userID string, latitude float64, longitude float64) error {
-	result := r.db.
+// Update location
+func (r *DriverRepository) UpdateLocation(ctx context.Context, userID string, latitude float64, longitude float64) error {
+	result := r.db.WithContext(ctx).
 		Model(&model.Driver{}).
 		Where("user_id = ?", userID).
-		Updates(map[string]interface{}{
-			"lat": latitude,
-			"lng": longitude,
+		Updates(map[string]any{
+			"lat":              latitude,
+			"lng":              longitude,
 			"last_location_at": time.Now(),
 		})
+
 	if result.Error != nil {
-		return fmt.Errorf("failed to update location: %w", result.Error)
+		// check if the error is not found
+		return fmt.Errorf("update driver location: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("driver not found")
+		return ErrDriverNotFound
 	}
 	return nil
 }

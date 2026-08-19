@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/KhanhChung2k5/simple-grab/internal/model"
 	"github.com/KhanhChung2k5/simple-grab/internal/repository"
@@ -25,13 +24,11 @@ func NewAuthHandler(auth *service.AuthService) *AuthHandler {
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req model.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		// if the request is invalid, return a bad request response
 		response.BadRequest(c, err)
 		return
 	}
-
-	// Normalize the email so registration and login use a consistent value.
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-
+	// call the Register service to register the user
 	result, err := h.auth.Register(c.Request.Context(), req)
 	if err != nil {
 		switch {
@@ -40,11 +37,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		case errors.Is(err, service.ErrInvalidRole):
 			response.BadRequest(c, err)
 		default:
-			response.InternalServerError(c, errors.New("failed to register"))
+			internalError(c, "failed to register")
 		}
 		return
 	}
-
+	// if the registration is successful, return a success response
 	response.Success(c, result)
 }
 
@@ -53,6 +50,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// bind the request body to the LoginRequest struct
 	var req model.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		// if the request is invalid, return a bad request response
 		response.BadRequest(c, err)
 		return
 	}
@@ -61,11 +59,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	result, err := h.auth.Login(c.Request.Context(), req)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidCredentials) {
+			// if the credentials are invalid, return an unauthorized response
 			response.Unauthorized(c, err)
 			return
 		}
 		// if the error is not nil, return an internal server error response
-		response.InternalServerError(c, errors.New("failed to login"))
+		internalError(c, "failed to login")
 		return
 	}
 
@@ -78,6 +77,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	// get the user from the context
 	userVal, exists := c.Get("user")
 	if !exists {
+		// if the user is not found, return an unauthorized response
 		response.Unauthorized(c, errors.New("unauthorized"))
 		return
 	}
@@ -85,7 +85,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	// cast the user from the context to the User struct
 	user, ok := userVal.(*model.User)
 	if !ok {
-		response.InternalServerError(c, errors.New("invalid user in context"))
+		internalError(c, "invalid user in context")
 		return
 	}
 

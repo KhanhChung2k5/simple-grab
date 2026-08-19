@@ -1,18 +1,41 @@
 package config
 
 import (
-	"strings"
-
+	"errors"
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
+	"strings"
 )
 
 type Config struct {
 	PORT             string `mapstructure:"PORT"`
 	DATABASE_URL     string `mapstructure:"DATABASE_URL"`
 	JWT_SECRET       string `mapstructure:"JWT_SECRET"`
-	JWT_EXPIRY_HOURS int `mapstructure:"JWT_EXPIRY_HOURS"`
+	JWT_EXPIRY_HOURS int    `mapstructure:"JWT_EXPIRY_HOURS"`
 	GIN_MODE         string `mapstructure:"GIN_MODE"`
+}
+
+// validate the config
+func (c Config) Validate() error {
+	if c.PORT == "" {
+		return errors.New("PORT is required")
+	}
+	if c.DATABASE_URL == "" {
+		return errors.New("DATABASE_URL is required")
+	}
+	if c.JWT_SECRET == "" {
+		return errors.New("JWT_SECRET is required")
+	}
+	if c.JWT_EXPIRY_HOURS <= 0 {
+		return errors.New(
+			"JWT_EXPIRY_HOURS must be greater than zero",
+		)
+	}
+	if c.GIN_MODE != "debug" && c.GIN_MODE != "release" && c.GIN_MODE != "test" {
+		return errors.New("GIN_MODE must be debug, release, or test")
+	}
+
+	return nil
 }
 
 func LoadConfig() (Config, error) {
@@ -32,6 +55,10 @@ func LoadConfig() (Config, error) {
 		JWT_SECRET:       viper.GetString("JWT_SECRET"),
 		JWT_EXPIRY_HOURS: viper.GetInt("JWT_EXPIRY_HOURS"),
 		GIN_MODE:         viper.GetString("GIN_MODE"),
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
 	}
 
 	return cfg, nil

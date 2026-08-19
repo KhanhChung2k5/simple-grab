@@ -10,20 +10,28 @@ const (
 
 // EstimateFare returns distance in km and estimated fare in VND.
 func EstimateFare(pickupLat, pickupLng, dropoffLat, dropoffLng float64) (distanceKm float64, fare float64) {
-	distanceKm = haversineKm(pickupLat, pickupLng, dropoffLat, dropoffLng)
+	distanceKm = Haversine(pickupLat, pickupLng, dropoffLat, dropoffLng)
 	fare = baseFare + distanceKm*pricePerKm
 	return distanceKm, math.Round(fare)
 }
 
-func haversineKm(lat1, lng1, lat2, lng2 float64) float64 {
+
+//Haversine formula to calculate the distance between two points on the Earth's surface
+func Haversine(lat1, lng1, lat2, lng2 float64) float64 {
+	// Convert degrees to radians
 	lat1Rad := lat1 * math.Pi / 180
 	lat2Rad := lat2 * math.Pi / 180
 	dLat := (lat2 - lat1) * math.Pi / 180
 	dLng := (lng2 - lng1) * math.Pi / 180
-
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
-		math.Cos(lat1Rad)*math.Cos(lat2Rad)*math.Sin(dLng/2)*math.Sin(dLng/2)
-
+	// Calculate the distance
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(lat1Rad)*math.Cos(lat2Rad)*math.Sin(dLng/2)*math.Sin(dLng/2)
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	// Return the distance in kilometers
 	return earthRadiusKm * c
+}
+
+
+//BaseFare returns the base fare
+func BaseFare() float64 {
+	return baseFare
 }

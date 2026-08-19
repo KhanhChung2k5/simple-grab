@@ -11,11 +11,11 @@ import (
 )
 
 var (
-	//
-	// ErrRideNotFound is returned when a ride is not found
-	ErrRideNotFound = errors.New("ride not found")
-	// ErrRideAlreadyTaken is returned when a ride already has a driver
-	ErrRideAlreadyTaken = errors.New("ride already has a driver")
+	ErrRideNotFound        = errors.New("ride not found")
+	ErrRideAlreadyTaken    = errors.New("ride already has a driver")
+	ErrRideStatusChanged   = errors.New("ride status has changed")
+	ErrRiderHasActiveRide  = errors.New("rider already has an active ride")
+	ErrDriverHasActiveRide = errors.New("driver already has an active ride")
 )
 
 type RideRepository struct {
@@ -32,6 +32,9 @@ func (r *RideRepository) Create(ctx context.Context, ride *model.Ride) (*model.R
 
 	err := r.db.WithContext(ctx).Create(ride).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return nil, ErrRiderHasActiveRide
+		}
 		return nil, fmt.Errorf("create ride: %w", err)
 	}
 
@@ -120,32 +123,55 @@ func (r *RideRepository) Accept(ctx context.Context, rideID, driverID string) (*
 		})
 
 	if result.Error != nil {
+		// check if the error is duplicated key
+		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
+			return nil, ErrDriverHasActiveRide
+		}
 		return nil, fmt.Errorf("accept ride: %w", result.Error)
 	}
 
-	// if the ride is not found, return an error
+	// check if the ride is not found
 	if result.RowsAffected == 0 {
 		return nil, ErrRideAlreadyTaken
 	}
+
+	// return the ride
 
 	return r.GetByID(ctx, rideID)
 }
 
 // UpdateStatus updates the status of a ride
-func (r *RideRepository) UpdateStatus(ctx context.Context, rideID, driverID, newStatus string) (*model.Ride, error) {
+func (r *RideRepository) UpdateStatus(
+	ctx context.Context,
+	rideID string,
+	driverID string,
+	currentStatus string,
+	newStatus string,
+) (*model.Ride, error) {
+	// update the ride status
 	result := r.db.WithContext(ctx).
 		Model(&model.Ride{}).
-		Where("id = ? AND driver_id = ?", rideID, driverID).
-		Updates(map[string]interface{}{
+		Where(
+			"id = ? AND driver_id = ? AND status = ?",
+			rideID,
+			driverID,
+			currentStatus,
+		).
+		// update the ride status and updated at
+		Updates(map[string]any{
 			"status":     newStatus,
 			"updated_at": time.Now(),
 		})
 
 	if result.Error != nil {
+		// check if the error is duplicated key
+		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
+			return nil, ErrRideStatusChanged
+		}
 		return nil, fmt.Errorf("update ride status: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return nil, ErrRideNotFound
+		return nil, ErrRideStatusChanged
 	}
 
 	return r.GetByID(ctx, rideID)
@@ -184,4 +210,54 @@ func (r *RideRepository) HasActiveRideByDriver(ctx context.Context, driverID str
 	}
 
 	return count > 0, nil
+}
+
+// CancelByRider atomically cancels a rider-owned ride if its status has not changed.
+func (r *RideRepository) CancelByRider(ctx context.Context, rideID, riderID, currentStatus string) (*model.Ride, error) {
+	result := r.db.WithContext(ctx).
+		Model(&model.Ride{}).
+		Where(
+			"id = ? AND rider_id = ? AND status = ?",
+			rideID,
+			riderID,
+			currentStatus,
+		).
+		Updates(map[string]any{
+			"status":     model.RideCancelled,
+			"updated_at": time.Now(),
+		})
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("cancel ride: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return nil, ErrRideStatusChanged
+	}
+
+	return r.GetByID(ctx, rideID)
+}
+
+// CancelByDriver atomically cancels a driver-assigned ride if its status has not changed.
+func (r *RideRepository) CancelByDriver(ctx context.Context, rideID, driverID, currentStatus string) (*model.Ride, error) {
+	result := r.db.WithContext(ctx).
+		Model(&model.Ride{}).
+		Where(
+			"id = ? AND driver_id = ? AND status = ?",
+			rideID,
+			driverID,
+			currentStatus,
+		).
+		Updates(map[string]any{
+			"status":     model.RideCancelled,
+			"updated_at": time.Now(),
+		})
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("cancel ride by driver: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return nil, ErrRideStatusChanged
+	}
+
+	return r.GetByID(ctx, rideID)
 }

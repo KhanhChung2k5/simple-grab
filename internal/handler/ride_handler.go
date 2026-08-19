@@ -36,7 +36,7 @@ func (h *RideHandler) Create(c *gin.Context) {
 			response.Conflict(c, err)
 
 		default:
-			response.InternalServerError(c, errors.New("failed to create ride"))
+			internalError(c, "failed to create ride")
 			return
 		}
 		return
@@ -47,7 +47,10 @@ func (h *RideHandler) Create(c *gin.Context) {
 
 // GetByID gets a ride by ID
 func (h *RideHandler) GetByID(c *gin.Context) {
-	rideID := c.Param("id")
+	rideID, ok := rideIDParam(c)
+	if !ok {
+		return
+	}
 	userID := c.GetString("user_id")
 	role := c.GetString("role")
 
@@ -61,7 +64,7 @@ func (h *RideHandler) GetByID(c *gin.Context) {
 			response.Forbidden(c, err)
 			return
 		}
-		response.InternalServerError(c, errors.New("failed to get ride by ID"))
+		internalError(c, "failed to get ride by ID")
 		return
 	}
 	response.Success(c, ride)
@@ -78,7 +81,7 @@ func (h *RideHandler) List(c *gin.Context) {
 			response.Forbidden(c, err)
 			return
 		}
-		response.InternalServerError(c, errors.New("failed to get list of rides"))
+		internalError(c, "failed to get list of rides")
 		return
 	}
 	response.Success(c, rides)
@@ -88,7 +91,7 @@ func (h *RideHandler) List(c *gin.Context) {
 func (h *RideHandler) ListAvailable(c *gin.Context) {
 	availableRides, err := h.rides.ListAvailable(c.Request.Context())
 	if err != nil {
-		response.InternalServerError(c, errors.New("failed to get list of available rides"))
+		internalError(c, "failed to get list of available rides")
 		return
 	}
 	response.Success(c, availableRides)
@@ -96,7 +99,10 @@ func (h *RideHandler) ListAvailable(c *gin.Context) {
 
 // Accept lets a driver accept a pending ride
 func (h *RideHandler) Accept(c *gin.Context) {
-	rideID := c.Param("id")
+	rideID, ok := rideIDParam(c)
+	if !ok {
+		return
+	}
 	driverID := c.GetString("user_id")
 
 	ride, err := h.rides.Accept(c.Request.Context(), rideID, driverID)
@@ -118,15 +124,67 @@ func (h *RideHandler) Accept(c *gin.Context) {
 			response.Conflict(c, err)
 			return
 		}
-		response.InternalServerError(c, errors.New("failed to accept ride"))
+		internalError(c, "failed to accept ride")
 		return
 	}
 	response.Success(c, ride)
 }
 
+// Cancel cancels a ride according to the authenticated user's role.
+func (h *RideHandler) Cancel(c *gin.Context) {
+	// get the ride ID and user ID and role
+	rideID, ok := rideIDParam(c)
+	if !ok {
+		return
+	}
+	userID := c.GetString("user_id")
+	role := c.GetString("role")
+
+	// get the ride and error
+	var (
+		ride *model.Ride
+		err  error
+	)
+
+	// switch the role and get the ride and error
+	switch role {
+	case model.RoleRider:
+		// cancel the ride by rider
+		ride, err = h.rides.CancelByRider(c.Request.Context(), rideID, userID)
+	case model.RoleDriver:
+		// cancel the ride by driver
+		ride, err = h.rides.CancelByDriver(c.Request.Context(), rideID, userID)
+	default:
+		response.Forbidden(c, service.ErrForbidden)
+		return
+	}
+
+	// check if the error is not nil
+	if err != nil {
+		// switch the error and return the error
+		switch {
+		// check if the error is ErrRideNotFound
+		case errors.Is(err, service.ErrRideNotFound):
+			response.NotFound(c, err)
+		case errors.Is(err, service.ErrForbidden):
+			response.Forbidden(c, err)
+		case errors.Is(err, service.ErrRideCannotCancel):
+			response.Conflict(c, err)
+		default:
+			internalError(c, "failed to cancel ride")
+		}
+		return
+	}
+
+	response.Success(c, ride)
+}
+
 // UpdateStatus updates ride status (accepted → in_progress → completed)
 func (h *RideHandler) UpdateStatus(c *gin.Context) {
-	rideID := c.Param("id")
+	rideID, ok := rideIDParam(c)
+	if !ok {
+		return
+	}
 	driverID := c.GetString("user_id")
 
 	var req model.UpdateRideStatusRequest
@@ -142,14 +200,14 @@ func (h *RideHandler) UpdateStatus(c *gin.Context) {
 			return
 		}
 		if errors.Is(err, service.ErrRideStatusInvalid) {
-			response.BadRequest(c, err)
+			response.Conflict(c, err)
 			return
 		}
 		if errors.Is(err, service.ErrForbidden) {
 			response.Forbidden(c, err)
 			return
 		}
-		response.InternalServerError(c, errors.New("failed to update status"))
+		internalError(c, "failed to update status")
 		return
 	}
 	response.Success(c, ride)

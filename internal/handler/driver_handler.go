@@ -29,8 +29,12 @@ func (h *DriverHandler) UpdateOnline(c *gin.Context) {
 		return
 	}
 
-	if err := h.drivers.SetOnline(userID, *req.IsOnline); err != nil {
-		response.InternalServerError(c, errors.New("failed to update online status"))
+	if err := h.drivers.SetOnline(c.Request.Context(), userID, *req.IsOnline); err != nil {
+		if errors.Is(err, service.ErrDriverNotFound) {
+			response.NotFound(c, err)
+			return
+		}
+		internalError(c, "failed to update online status")
 		return
 	}
 
@@ -47,8 +51,12 @@ func (h *DriverHandler) UpdateLocation(c *gin.Context) {
 		return
 	}
 
-	if err := h.drivers.UpdateLocation(userID, *req.Latitude, *req.Longitude); err != nil {
-		response.InternalServerError(c, errors.New("failed to update location"))
+	if err := h.drivers.UpdateLocation(c.Request.Context(), userID, *req.Latitude, *req.Longitude); err != nil {
+		if errors.Is(err, service.ErrDriverNotFound) {
+			response.NotFound(c, err)
+			return
+		}
+		internalError(c, "failed to update location")
 		return
 	}
 
